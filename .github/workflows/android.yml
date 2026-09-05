@@ -49,7 +49,7 @@ jobs:
           export AR="$TOOLCHAIN/llvm-ar"
           export RANLIB="$TOOLCHAIN/llvm-ranlib"
           make clean || true
-          make -j2 platform=unix HAVE_NEON=1 USE_CYCLONE=0 PLATFORM_DEFINES='-DANDROID' CFLAGS='-march=armv8-a'-Wno-incompatible-function-pointer-types CXXFLAGS='-march=armv8-a'
+          make -j2 platform=unix HAVE_NEON=1 USE_CYCLONE=0 PLATFORM_DEFINES='-DANDROID' CFLAGS='-march=armv8-a -Wno-incompatible-function-pointer-types' CXXFLAGS='-march=armv8-a'
           file fbneo_libretro.so
           readelf -h fbneo_libretro.so | grep -E 'Class:|Machine:'
 
