@@ -2,9 +2,6 @@ name: Build FBNeo 4039 Android ARM64
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
@@ -13,14 +10,13 @@ jobs:
     steps:
       - name: Checkout 4039 patch repository
         uses: actions/checkout@v4
-        with:
-          path: patch
 
       - name: Checkout upstream Libretro FBNeo
         uses: actions/checkout@v4
         with:
           repository: libretro/FBNeo
           path: upstream
+          fetch-depth: 1
 
       - name: Apply FBNeo 4039 overlay
         shell: bash
@@ -29,25 +25,25 @@ jobs:
 
           mkdir -p upstream/src/burn/drv/capcom
 
-          cp patch/overlay/src/burn/drv/capcom/cps2_4039.cpp \
+          cp overlay/src/burn/drv/capcom/cps2_4039.cpp \
              upstream/src/burn/drv/capcom/cps2_4039.cpp
 
-          cp patch/overlay/src/burn/drv/capcom/cps2_4039.h \
+          cp overlay/src/burn/drv/capcom/cps2_4039.h \
              upstream/src/burn/drv/capcom/cps2_4039.h
 
-          cp patch/overlay/src/burn/drv/capcom/cps_draw.cpp \
+          cp overlay/src/burn/drv/capcom/cps_draw.cpp \
              upstream/src/burn/drv/capcom/cps_draw.cpp
 
-          cp patch/overlay/src/burn/drv/capcom/cps_run.cpp \
+          cp overlay/src/burn/drv/capcom/cps_run.cpp \
              upstream/src/burn/drv/capcom/cps_run.cpp
 
-          cp patch/overlay/src/burn/drv/capcom/meson.build \
-             upstream/src/burn/drv/capcom/meson.build
+          echo "Arquivos 4039 aplicados:"
+          ls -l upstream/src/burn/drv/capcom/cps2_4039.*
 
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y make file
+          sudo apt-get install -y build-essential perl nasm file
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -56,21 +52,25 @@ jobs:
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "ndk;27.3.13750724"
+          sdkmanager --install "ndk;27.3.13750724"
 
       - name: Build Libretro core for Android ARM64
-        shell: bash
         working-directory: upstream/src/burner/libretro
+        shell: bash
+        env:
+          NDK_ROOT: ${{ env.ANDROID_HOME }}/ndk/27.3.13750724
         run: |
           set -euxo pipefail
 
-          export NDK_ROOT="$ANDROID_SDK_ROOT/ndk/27.3.13750724"
           TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
           export CC="$TOOLCHAIN/aarch64-linux-android24-clang"
           export CXX="$TOOLCHAIN/aarch64-linux-android24-clang++"
           export AR="$TOOLCHAIN/llvm-ar"
           export RANLIB="$TOOLCHAIN/llvm-ranlib"
+
+          echo "CC=$CC"
+          echo "CXX=$CXX"
 
           make clean || true
 
@@ -80,7 +80,7 @@ jobs:
             USE_CYCLONE=0 \
             PLATFORM_DEFINES='-DANDROID' \
             CFLAGS='-march=armv8-a -Wno-incompatible-function-pointer-types' \
-            CXXFLAGS='-march=armv8-a'
+            CXXFLAGS='-march=armv8-a -Wno-incompatible-function-pointer-types'
 
           test -f fbneo_libretro.so
 
@@ -93,3 +93,4 @@ jobs:
         with:
           name: FBNeo-4039-Android-ARM64
           path: upstream/src/burner/libretro/fbneo_libretro.so
+          if-no-files-found: error
