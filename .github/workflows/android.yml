@@ -19,7 +19,7 @@ jobs:
       - name: Checkout upstream Libretro FBNeo
         uses: actions/checkout@v4
         with:
-          repository: finalburnneo/FBNeo
+          repository: libretro/FBNeo
           path: upstream
 
       - name: Apply FBNeo 4039 overlay
