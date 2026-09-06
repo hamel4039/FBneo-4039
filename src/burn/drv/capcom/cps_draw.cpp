@@ -337,7 +337,7 @@ static void Cps2Layers()
 		if (LayerCont & CpsLayEn[3]) nDrawMask[nSlice] |= 8;
 		nDrawMask[nSlice] &= nBurnLayer;					// User choice of layers to display
 
-		// Determine layerö priority:
+		// Determine layerÃ¶ priority:
 		Draw[nSlice][3] = (LayerCont >> 12) & 3;			// top layer
 		Draw[nSlice][2] = (LayerCont >> 10) & 3;
 		Draw[nSlice][1] = (LayerCont >> 8) & 3;
