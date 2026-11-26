@@ -16,7 +16,7 @@ on:
 
 env:
   UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'd25b21e733fd4ee07980a65268abb5706fc3549d' }}
-  NDK_VERSION: "27.3.13750724"
+  NDK_RELEASE: "r27d"   # 27.3.13750724
 
 jobs:
   build:
@@ -49,15 +49,14 @@ jobs:
           grep -n "Cps4039FrameStart" src/burn/drv/capcom/cps_run.cpp
           grep -n "Cps4039CharacterSelectDraw" src/burn/drv/capcom/cps_draw.cpp
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Android NDK
+      - name: Instalar Android NDK r27d
         shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "ndk;${NDK_VERSION}" > /dev/null
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          set -euxo pipefail
+          curl -fsSL -o /tmp/ndk.zip "https://dl.google.com/android/repository/android-ndk-${NDK_RELEASE}-linux.zip"
+          unzip -q /tmp/ndk.zip -d "$RUNNER_TEMP"
+          echo "NDK_HOME=$RUNNER_TEMP/android-ndk-${NDK_RELEASE}" >> "$GITHUB_ENV"
+          cat "$RUNNER_TEMP/android-ndk-${NDK_RELEASE}/source.properties"
 
       - name: Build core libretro (Android arm64-v8a)
         working-directory: upstream/src/burner/libretro/jni
