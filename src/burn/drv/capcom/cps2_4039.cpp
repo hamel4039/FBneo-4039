@@ -1,113 +1,118 @@
+// FBNeo 4039 - extensao para Marvel vs. Capcom (mvsc, CPS-2).
+// Isolada neste arquivo: os drivers originais so recebem 3 chamadas de gancho
+// (ver patches/0001-cps2-4039-hooks.patch).
+
 #include "cps.h"
 #include "cps2_4039.h"
 #include <string.h>
 
 namespace {
-static const UINT32 P1_CURSOR = 0x2000;
-static const UINT32 P2_CURSOR = 0x2002;
-static const UINT16 WOLVERINE_POS = 5;
-static bool sKaelVirtualP1 = false;
-static bool sKaelVirtualP2 = false;
-static UINT8 sPrevP1 = 0;
-static UINT8 sPrevP2 = 0;
 
-static bool IsMvsc4039()
-{
-\treturn strcmp(BurnDrvGetTextA(DRV_NAME), "mvsc") == 0;
-}
+// Offsets dentro da Work RAM do 68000 (0xFF0000 + off)
+const UINT32 P1_CURSOR     = 0x2000;
+const UINT32 P2_CURSOR     = 0x2002;
+const UINT16 WOLVERINE_POS = 5;
 
-static UINT16 ReadRamWord(UINT32 off)
-{
-\treturn ((UINT16)CpsRamFF[off] << 8) | CpsRamFF[off + 1];
-}
+bool  sKaelVirtualP1 = false;
+bool  sKaelVirtualP2 = false;
+UINT8 sPrevP1 = 0;
+UINT8 sPrevP2 = 0;
 
-static void WriteRamWord(UINT32 off, UINT16 value)
+bool IsMvsc4039()
 {
-\tCpsRamFF[off] = (UINT8)(value >> 8);
-\tCpsRamFF[off + 1] = (UINT8)value;
+	const char* name = BurnDrvGetTextA(DRV_NAME);
+	return name && strcmp(name, "mvsc") == 0;
 }
 
-static bool Rising(UINT8 now, UINT8 previous, UINT8 mask)
+// O FBNeo guarda a RAM do 68000 em palavras de 16 bits na ordem nativa do host
+// (em little-endian os bytes ficam trocados, por isso o acesso a byte usa addr ^ 1).
+// Ler/escrever a palavra inteira com BURN_ENDIAN_SWAP_INT16 funciona em ARM64 e big-endian.
+UINT16 ReadRamWord(UINT32 off)
 {
-\treturn (now & mask) && !(previous & mask);
+	return BURN_ENDIAN_SWAP_INT16(*((UINT16*)(CpsRamFF + off)));
 }
 
-static void DrawPixel(INT32 x, INT32 y, UINT32 colour)
+void WriteRamWord(UINT32 off, UINT16 value)
 {
-\tif (!pBurnDraw) return;
-\tif (x < 0 || y < 0 || x >= nCpsScreenWidth || y >= nCpsScreenHeight) return;
-\tPutPix(pBurnDraw + y * nBurnPitch + x * nBurnBpp, colour);
+	*((UINT16*)(CpsRamFF + off)) = BURN_ENDIAN_SWAP_INT16(value);
 }
 
-static void DrawBox(INT32 x, INT32 y, INT32 width, INT32 height, UINT32 colour)
+bool Rising(UINT8 now, UINT8 previous, UINT8 mask)
 {
-\tINT32 i;
-\tfor (i = 0; i < width; i++) {
-\t\tDrawPixel(x + i, y, colour);
-\t\tDrawPixel(x + i, y + height - 1, colour);
-\t}
-\tfor (i = 0; i < height; i++) {
-\t\tDrawPixel(x, y + i, colour);
-\t\tDrawPixel(x + width - 1, y + i, colour);
-\t}
+	return (now & mask) && !(previous & mask);
 }
+
+void DrawPixel(INT32 x, INT32 y, UINT32 colour)
+{
+	if (x < 0 || y < 0 || x >= nCpsScreenWidth || y >= nCpsScreenHeight) return;
+	PutPix(pBurnDraw + y * nBurnPitch + x * nBurnBpp, colour);
 }
+
+void DrawBox(INT32 x, INT32 y, INT32 width, INT32 height, UINT32 colour)
+{
+	for (INT32 i = 0; i < width; i++) {
+		DrawPixel(x + i, y, colour);
+		DrawPixel(x + i, y + height - 1, colour);
+	}
+	for (INT32 i = 0; i < height; i++) {
+		DrawPixel(x, y + i, colour);
+		DrawPixel(x + width - 1, y + i, colour);
+	}
+}
+
+} // namespace
 
 void Cps4039Reset()
 {
-\tsKaelVirtualP1 = false;
-\tsKaelVirtualP2 = false;
-\tsPrevP1 = 0;
-\tsPrevP2 = 0;
+	sKaelVirtualP1 = false;
+	sKaelVirtualP2 = false;
+	sPrevP1 = 0;
+	sPrevP2 = 0;
 }
 
 void Cps4039FrameStart()
 {
-\tif (!IsMvsc4039()) return;
+	if (!IsMvsc4039() || CpsRamFF == NULL) return;
 
-\tif (CpsReset) {
-\t\tCps4039Reset();
-\t}
+	if (CpsReset) {
+		Cps4039Reset();
+	}
 
-\tconst UINT8 p1 = CpsInp001[0];
-\tconst UINT8 p2 = CpsInp000[0];
-\tconst bool p1Right = Rising(p1, sPrevP1, 0x01);
-\tconst bool p1Left  = Rising(p1, sPrevP1, 0x02);
-\tconst bool p2Right = Rising(p2, sPrevP2, 0x01);
-\tconst bool p2Left  = Rising(p2, sPrevP2, 0x02);
-\n\tconst UINT16 p1pos = ReadRamWord(P1_CURSOR);
-\tconst UINT16 p2pos = ReadRamWord(P2_CURSOR);
-\n\tif (!sKaelVirtualP1 && p1Right && p1pos == WOLVERINE_POS) {
-\t\tsKaelVirtualP1 = true;
-\t}
-\tif (sKaelVirtualP1 && p1Left) {
-\t\tsKaelVirtualP1 = false;
-\t}
-\tif (!sKaelVirtualP2 && p2Right && p2pos == WOLVERINE_POS) {
-\t\tsKaelVirtualP2 = true;
-\t}
-\tif (sKaelVirtualP2 && p2Left) {
-\t\tsKaelVirtualP2 = false;
-\t}
-\n\tif (sKaelVirtualP1) WriteRamWord(P1_CURSOR, WOLVERINE_POS);
-\tif (sKaelVirtualP2) WriteRamWord(P2_CURSOR, WOLVERINE_POS);
-\n\tsPrevP1 = p1;
-\tsPrevP2 = p2;
+	// CpsInp001 = P1, CpsInp000 = P2 (bit 0 = direita, bit 1 = esquerda), como em d_cps2.cpp
+	const UINT8 p1 = CpsInp001[0];
+	const UINT8 p2 = CpsInp000[0];
+	const bool p1Right = Rising(p1, sPrevP1, 0x01);
+	const bool p1Left  = Rising(p1, sPrevP1, 0x02);
+	const bool p2Right = Rising(p2, sPrevP2, 0x01);
+	const bool p2Left  = Rising(p2, sPrevP2, 0x02);
+
+	const UINT16 p1pos = ReadRamWord(P1_CURSOR);
+	const UINT16 p2pos = ReadRamWord(P2_CURSOR);
+
+	if (!sKaelVirtualP1 && p1Right && p1pos == WOLVERINE_POS) sKaelVirtualP1 = true;
+	else if (sKaelVirtualP1 && p1Left)                         sKaelVirtualP1 = false;
+
+	if (!sKaelVirtualP2 && p2Right && p2pos == WOLVERINE_POS) sKaelVirtualP2 = true;
+	else if (sKaelVirtualP2 && p2Left)                         sKaelVirtualP2 = false;
+
+	if (sKaelVirtualP1) WriteRamWord(P1_CURSOR, WOLVERINE_POS);
+	if (sKaelVirtualP2) WriteRamWord(P2_CURSOR, WOLVERINE_POS);
+
+	sPrevP1 = p1;
+	sPrevP2 = p2;
 }
 
 void Cps4039CharacterSelectDraw()
 {
-\tif (!IsMvsc4039() || !pBurnDraw) return;
-\n\tconst UINT32 colour = BurnHighCol(255, 255, 255, 0);
-\tconst INT32 x = 352;
-\tconst INT32 y = 192;
-\tconst INT32 size = 32;
-\n\tif (sKaelVirtualP1) {
-\t\tDrawBox(x, y, size, size, colour);
-\t}
-\tif (sKaelVirtualP2) {
-\t\tDrawBox(x + 2, y + 2, size, size, colour);
-\t}
+	if (!pBurnDraw || !IsMvsc4039()) return;
+
+	const UINT32 colour = BurnHighCol(255, 255, 255, 0); // branco
+	const INT32 x = 352;
+	const INT32 y = 192;
+	const INT32 size = 32;
+
+	if (sKaelVirtualP1) DrawBox(x, y, size, size, colour);
+	if (sKaelVirtualP2) DrawBox(x + 2, y + 2, size, size, colour);
 }
 
 int Cps4039KaelVirtualP1() { return sKaelVirtualP1 ? 1 : 0; }

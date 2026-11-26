@@ -1,1 +1,82 @@
+name: Build FBNeo 4039 Android ARM64
 
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Commit/branch do libretro/FBNeo usado como base"
+        required: false
+        default: "d25b21e733fd4ee07980a65268abb5706fc3549d"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "patches/**"
+      - ".github/workflows/Android.yml"
+
+env:
+  UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'd25b21e733fd4ee07980a65268abb5706fc3549d' }}
+  NDK_VERSION: "27.3.13750724"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout FBNeo 4039
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream libretro/FBNeo
+        uses: actions/checkout@v4
+        with:
+          repository: libretro/FBNeo
+          ref: ${{ env.UPSTREAM_REF }}
+          path: upstream
+
+      - name: Aplicar FBNeo 4039 (arquivos novos + patch minimo)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # 1) Arquivos novos: nao substituem nada do FBNeo original
+          cp src/burn/drv/capcom/cps2_4039.cpp upstream/src/burn/drv/capcom/
+          cp src/burn/drv/capcom/cps2_4039.h   upstream/src/burn/drv/capcom/
+          # 2) Ganchos (3 linhas em cps_run.cpp, 3 em cps_draw.cpp)
+          cd upstream
+          git apply --check ../patches/0001-cps2-4039-hooks.patch
+          git apply ../patches/0001-cps2-4039-hooks.patch
+          git diff --stat
+          grep -n "Cps4039FrameStart" src/burn/drv/capcom/cps_run.cpp
+          grep -n "Cps4039CharacterSelectDraw" src/burn/drv/capcom/cps_draw.cpp
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android NDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;${NDK_VERSION}" > /dev/null
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build core libretro (Android arm64-v8a)
+        working-directory: upstream/src/burner/libretro/jni
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Usa o build Android oficial do FBNeo (jni/Android.mk), so restringindo o ABI.
+          "$NDK_HOME/ndk-build" -j"$(nproc)" APP_ABI=arm64-v8a
+          SO=../libs/arm64-v8a/libretro.so
+          test -f "$SO"
+          readelf -h "$SO" | grep -E "Class:|Machine:"
+          # Confirma que o objeto do 4039 foi compilado
+          find ../obj -name 'cps2_4039.o' | grep -q .
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp "$SO" "$GITHUB_WORKSPACE/out/fbneo_libretro_android.so"
+
+      - name: Upload core ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: FBNeo-4039-Android-ARM64
+          path: out/fbneo_libretro_android.so
+          if-no-files-found: error

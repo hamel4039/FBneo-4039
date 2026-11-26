@@ -1,0 +1,40 @@
+diff --git a/src/burn/drv/capcom/cps_draw.cpp b/src/burn/drv/capcom/cps_draw.cpp
+index 43d2954..f6aeb68 100644
+--- a/src/burn/drv/capcom/cps_draw.cpp
++++ b/src/burn/drv/capcom/cps_draw.cpp
+@@ -1,4 +1,5 @@
+ #include "cps.h"
++#include "cps2_4039.h"
+ // CPS - Draw
+ 
+ CpsDrawPaletteCallback CpsDrawPaletteCallbackFunction = NULL;
+@@ -509,6 +510,8 @@ static void DoDraw(INT32 Recalc)
+ 	CpsClearScreen();
+ 
+ 	CpsLayersDoX();
++
++	Cps4039CharacterSelectDraw();						// FBNeo 4039 (so atua em mvsc)
+ }
+ 
+ INT32 CpsDraw()
+diff --git a/src/burn/drv/capcom/cps_run.cpp b/src/burn/drv/capcom/cps_run.cpp
+index 2fec781..fcac5ba 100644
+--- a/src/burn/drv/capcom/cps_run.cpp
++++ b/src/burn/drv/capcom/cps_run.cpp
+@@ -1,6 +1,7 @@
+ // CPS - Run
+ #include "cps.h"
+ #include "burn_ost.h"
++#include "cps2_4039.h"
+ 
+ // CPS2
+ INT32 Cps2Volume = 39;
+@@ -481,6 +482,8 @@ INT32 Cps2Frame()
+ 	if (CpsRunFrameStartCallbackFunction) {
+ 		CpsRunFrameStartCallbackFunction();
+ 	}
++
++	Cps4039FrameStart();									// FBNeo 4039 (so atua em mvsc)
+ 	
+ 	// Check the volumes every 5 frames or so
+ 	if (GetCurrentFrame() % 5 == 0) {
